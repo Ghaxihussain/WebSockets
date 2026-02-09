@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>1-on-1 Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        
+        #loginForm, #chatContainer {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        
+        #chatContainer {
+            display: none;
+        }
+        
+        #messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+        
+        .message {
+            margin: 5px 0;
+            padding: 8px;
+            border-radius: 5px;
+            background-color: #e3f2fd;
+        }
+        
+        .system-message {
+            background-color: #fff3cd;
+            color: #856404;
+            font-style: italic;
+            text-align: center;
+        }
+        
+        .sender {
+            font-weight: bold;
+            color: #1976d2;
+        }
+        
+        input {
+            width: 70%;
+            padding: 10px;
+            margin-right: 5px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+        
+        #roomInfo {
+            background-color: #e8f5e9;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Form -->
+    <div id="loginForm">
+        <h2>Join Chat Room</h2>
+        <input type="text" id="usernameInput" placeholder="Enter your username">
+        <input type="text" id="roomIdInput" placeholder="Enter room ID">
+        <button onclick="joinRoom()">Join</button>
+    </div>
+
+    <!-- Chat Container -->
+    <div id="chatContainer">
+        <div id="roomInfo">
+            <strong>Room:</strong> <span id="currentRoom"></span> | 
+            <strong>User:</strong> <span id="currentUser"></span>
+        </div>
+        <div id="messages"></div>
+        <input type="text" id="messageInput" placeholder="Type a message..." onkeypress="handleKeyPress(event)">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        let ws = null;
+        let username = "";
+        let roomId = "";
+
+        function joinRoom() {
+            username = document.getElementById('usernameInput').value.trim();
+            roomId = document.getElementById('roomIdInput').value.trim();
+            
+            if (!username || !roomId) {
+                alert("Please enter both username and room ID");
+                return;
+            }
+            
+            // Connect to WebSocket
+            ws = new WebSocket(`ws://localhost:7000/ws/${roomId}/${username}`);
+            
+            ws.onopen = function(event) {
+                console.log("Connected to chat room");
+                document.getElementById('loginForm').style.display = 'none';
+                document.getElementById('chatContainer').style.display = 'block';
+                document.getElementById('currentRoom').textContent = roomId;
+                document.getElementById('currentUser').textContent = username;
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                displayMessage(data);
+            };
+            
+            ws.onclose = function(event) {
+                console.log("Disconnected from chat");
+                alert("Disconnected from chat room");
+            };
+            
+            ws.onerror = function(error) {
+                console.error("WebSocket error:", error);
+                alert("Connection error!");
+            };
+        }
+
+        function displayMessage(data) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            
+            if (data.type === 'system') {
+                messageDiv.className = 'message system-message';
+                messageDiv.textContent = data.message;
+            } else {
+                messageDiv.className = 'message';
+                messageDiv.innerHTML = `<span class="sender">${data.sender}:</span> ${data.content}`;
+            }
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (message && ws) {
+                ws.send(message);
+                input.value = '';
+            }
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+    </script>
+</body>
+</html>

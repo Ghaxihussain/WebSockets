@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Echo Test</title>
+</head>
+<body>
+    <h1>WebSocket Echo Server</h1>
+    <input type="text" id="messageInput" placeholder="Type a message">
+    <button onclick="sendMessage()">Send</button>
+    <div id="messages"></div>
+
+    <script>
+        // Connect to the WebSocket server
+        const ws = new WebSocket('ws://localhost:8000/ws');
+        
+        // When connection opens
+        ws.onopen = () => {
+            console.log('Connected to server');
+            addMessage('Connected!', 'system');
+        };
+        
+        // When we receive a message from server
+        ws.onmessage = (event) => {
+            addMessage(event.data, 'received');
+        };
+        
+        // Send message function
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value;
+            ws.send(message);
+            addMessage(message, 'sent');
+            input.value = '';
+        }
+        
+        // Display message in the UI
+        function addMessage(text, type) {
+            const div = document.getElementById('messages');
+            const msg = document.createElement('p');
+            msg.textContent = `Ouput: ${type}] ${text}`;
+            div.appendChild(msg);
+        }
+    </script>
+</body>
+</html>
