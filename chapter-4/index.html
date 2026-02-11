@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat</title>
+    <style>
+        body { font-family: Arial; max-width: 600px; margin: 50px auto; }
+        #messages { 
+            border: 1px solid #ccc; 
+            height: 400px; 
+            overflow-y: scroll; 
+            padding: 10px; 
+            margin-bottom: 10px; 
+        }
+        .message { margin: 5px 0; }
+        .history { color: gray; }
+        .live { color: black; }
+        .sender { font-weight: bold; }
+        .timestamp { font-size: 12px; color: #999; }
+        input { padding: 8px; width: 70%; }
+        button { padding: 8px 16px; }
+    </style>
+</head>
+<body>
+    <h2>Chat Room</h2>
+
+    <!-- Join form -->
+    <div id="join">
+        <input id="username" placeholder="Your name" />
+        <input id="room" placeholder="Room ID" />
+        <button onclick="connect()">Join</button>
+    </div>
+
+    <!-- Chat area (hidden until connected) -->
+    <div id="chat" style="display: none;">
+        <div id="messages"></div>
+        <input id="input" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()" />
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        let ws;
+
+        function connect() {
+            const username = document.getElementById("username").value;
+            const room = document.getElementById("room").value;
+
+            ws = new WebSocket(`ws://localhost:7000/ws/${room}/${username}`);
+
+            ws.onopen = () => {
+                document.getElementById("join").style.display = "none";
+                document.getElementById("chat").style.display = "block";
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const messagesDiv = document.getElementById("messages");
+
+                const msgDiv = document.createElement("div");
+                msgDiv.className = `message ${data.type === "history" ? "history" : "live"}`;
+
+                const time = new Date(data.timestamp).toLocaleTimeString();
+
+                msgDiv.innerHTML = `
+                    <span class="sender">${data.sender}:</span> 
+                    ${data.content} 
+                    <span class="timestamp">${time}</span>
+                `;
+
+                messagesDiv.appendChild(msgDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            };
+
+            ws.onclose = () => {
+                alert("Disconnected");
+            };
+        }
+
+        function sendMessage() {
+            const input = document.getElementById("input");
+            if (input.value.trim()) {
+                ws.send(JSON.stringify({ content: input.value }));
+                input.value = "";
+            }
+        }
+    </script>
+</body>
+</html>
