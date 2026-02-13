@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>1-on-1 Chat</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            width: 400px;
+            background: #16213e;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 600px;
+        }
+        .header {
+            background: #0f3460;
+            padding: 15px;
+            text-align: center;
+            font-size: 18px;
+        }
+        .status-bar {
+            text-align: center;
+            padding: 5px;
+            font-size: 12px;
+            background: #e74c3c;
+            color: white;
+            display: none;
+        }
+        .status-bar.online { background: #2ecc71; display: block; }
+        .status-bar.offline { background: #e74c3c; display: block; }
+        .status-bar.disconnected { background: #f39c12; display: block; }
+
+        #login-screen {
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex: 1;
+            justify-content: center;
+        }
+        #login-screen input {
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 14px;
+        }
+        #login-screen button {
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            background: #e94560;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #chat-screen { display: none; flex-direction: column; flex: 1; }
+
+        #chat-box {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .msg {
+            max-width: 75%;
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-size: 14px;
+            word-wrap: break-word;
+        }
+        .msg.sent {
+            align-self: flex-end;
+            background: #e94560;
+        }
+        .msg.received {
+            align-self: flex-start;
+            background: #0f3460;
+        }
+        .unread-divider {
+            text-align: center;
+            color: #e74c3c;
+            font-size: 13px;
+            margin: 10px 0;
+            padding: 5px;
+            border-top: 1px solid #e74c3c;
+            border-bottom: 1px solid #e74c3c;
+            transition: opacity 1s ease;
+        }
+        .status-msg {
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+        }
+
+        #input-area {
+            display: flex;
+            padding: 10px;
+            gap: 8px;
+            background: #0f3460;
+        }
+        #input-area input {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 14px;
+        }
+        #input-area button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            background: #e94560;
+            color: white;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">1-on-1 Chat</div>
+        <div class="status-bar" id="status-bar"></div>
+
+        <div id="login-screen">
+            <input id="username-input" placeholder="Your username" />
+            <input id="room-input" placeholder="Room ID (e.g. room1)" />
+            <button onclick="joinChat()">Join Chat</button>
+        </div>
+
+        <div id="chat-screen">
+            <div id="chat-box"></div>
+            <div id="input-area">
+                <input id="msg-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendMessage()" />
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let username;
+        let roomId;
+        let retryCount = 0;
+        let retryDelay = 1000;
+        const maxRetries = 5;
+        const messageQueue = [];
+
+        function joinChat() {
+            username = document.getElementById("username-input").value.trim();
+            roomId = document.getElementById("room-input").value.trim();
+            if (!username || !roomId) return alert("Fill in both fields");
+
+            document.getElementById("login-screen").style.display = "none";
+            document.getElementById("chat-screen").style.display = "flex";
+            connect();
+        }
+
+        function connect() {
+            ws = new WebSocket(`ws://localhost:8000/ws/${roomId}/${username}`);
+
+            ws.onopen = () => {
+                retryCount = 0;
+                retryDelay = 1000;
+                updateStatus("online", "Connected");
+                flushQueue();
+            };
+
+            ws.onclose = () => {
+                updateStatus("disconnected", "Disconnected — reconnecting...");
+                reconnect();
+            };
+
+            ws.onerror = () => {
+                ws.close();
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.type === "unread_batch") {
+                    const chatBox = document.getElementById("chat-box");
+
+                    // add divider
+                    const divider = document.createElement("div");
+                    divider.className = "unread-divider";
+                    divider.textContent = `── ${data.messages.length} Unread Message${data.messages.length > 1 ? 's' : ''} ──`;
+                    chatBox.appendChild(divider);
+
+                    // render unread messages
+                    data.messages.forEach(msg => {
+                        addMessage(msg.sender, msg.content, "received");
+                    });
+
+                    // scroll down
+                    chatBox.scrollTop = chatBox.scrollHeight;
+
+                    // remove divider after 2 minutes
+                    setTimeout(() => {
+                        divider.style.opacity = "0";
+                        setTimeout(() => divider.remove(), 1000);
+                    }, 120000);
+                }
+
+                if (data.type === "message") {
+                    addMessage(data.sender, data.content, "received");
+                }
+
+                if (data.type === "status") {
+                    const chatBox = document.getElementById("chat-box");
+                    const el = document.createElement("div");
+                    el.className = "status-msg";
+                    el.textContent = `${data.user} is ${data.status}`;
+                    chatBox.appendChild(el);
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                }
+            };
+        }
+
+        function reconnect() {
+            if (retryCount >= maxRetries) {
+                updateStatus("offline", "Connection failed");
+                return;
+            }
+            retryCount++;
+            setTimeout(() => connect(), retryDelay);
+            retryDelay *= 2;
+        }
+
+        function sendMessage() {
+            const input = document.getElementById("msg-input");
+            const text = input.value.trim();
+            if (!text) return;
+
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(text);
+            } else {
+                messageQueue.push(text);
+            }
+
+            addMessage(username, text, "sent");
+            input.value = "";
+        }
+
+        function flushQueue() {
+            while (messageQueue.length > 0) {
+                ws.send(messageQueue.shift());
+            }
+        }
+
+        function addMessage(sender, content, type) {
+            const chatBox = document.getElementById("chat-box");
+            const el = document.createElement("div");
+            el.className = `msg ${type}`;
+            el.textContent = content;
+            chatBox.appendChild(el);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function updateStatus(className, text) {
+            const bar = document.getElementById("status-bar");
+            bar.className = `status-bar ${className}`;
+            bar.textContent = text;
+            bar.style.display = "block";
+        }
+    </script>
+</body>
+</html>
